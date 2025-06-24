@@ -1,0 +1,39 @@
+name: Laravel CI/CD
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"] # main 브랜치 pull request가 생성되거 업데이트 될 때 생성
+
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest # 워크플로우 실행 운영체제
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4 # 저장소 코드 체크아웃
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: gd, mbstring, pdo_mysql, bcmath, exif, iconv, imagick
+          ini-values: post_max_size=256M, upload_max_filesize=256M
+          tools: composer:v2
+
+      - name: Install Composer
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Copy .env.example to .env
+        run: cp .env.example .env
+
+      - name: Generate Application key
+        run: php artisan key:generate --env=testing
+
+      - name: Run Database Migrations
+        run: php artisan migrate --env=testing --force
+
+      - name: Run Tests
+        run: php artisan test
