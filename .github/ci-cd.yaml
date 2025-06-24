@@ -1,0 +1,79 @@
+name: Laravel CI/CD
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"] # main 브랜치 pull request가 생성되거 업데이트 될 때 생성
+
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest # 워크플로우 실행 운영체제
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4 # 저장소 코드 체크아웃
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extension: gd, mbstring, pdo_mysql, bcmath, exif, iconv, imagick
+          ini-values: post_max_size=256M, upload_max_filesize=256M
+          tools: composer:v2
+
+      - name: Copy .env.example to .env
+        run: cp .env.example .env
+
+      - name: Generate Application key
+        run: php artisan key:generate --env=testing
+
+      - name: Run Database Migrations
+        run: php artisan migrate --env=testing --force
+
+      - name: Run Tests
+        run: php artisan test
+
+  deploy:
+    needs: build-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+
+      - name: Install Composer Dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install rsync
+        run: sudo apt-get update && sudo apt-get install -y rsync # rsync 설치 (파일 동기화 도구)
+
+      - name: Deploy using SSH
+        uses: appleboy/ssh-action@master # SSH 액션 사용
+        with:
+          host: ${{ secrets.SSH_HOST }} # 서버 IP 또는 도메인 (GitHub Secret)
+          username: ${{ secrets.SSH_USERNAME }} # SSH 사용자 이름 (GitHub Secret)
+          key: ${{ secrets.SSH_PRIVATE_KEY }} # SSH 개인 키 (GitHub Secret)
+          port: ${{ secrets.SSH_PORT }} # SSH 포트 (기본값 22)
+          script: |
+            # 서버에서 실행될 명령어들
+            cd /var/www/your-laravel-app # Laravel 프로젝트 루트 디렉토리로 이동
+            git pull origin main # 최신 코드 가져오기 (또는 rsync로 파일 동기화)
+            composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader # 서버에서 의존성 설치
+            php artisan migrate --force # 마이그레이션 실행
+            php artisan optimize:clear # 캐시 클리어
+            php artisan config:cache # 설정 캐시
+            php artisan route:cache # 라우트 캐시
+            php artisan view:cache # 뷰 캐시
+            sudo systemctl reload php8.4-fpm # PHP-FPM 재시작 (웹 서버 환경에 따라 다름)
+            # 권한 설정 (필요시)
+            sudo chown -R www-data:www-data /var/www/your-laravel-app/storage /var/www/your-laravel-app/bootstrap/cache
+            sudo chmod -R 775 /var/www/your-laravel-app/storage /var/www/your-laravel-app/bootstrap/cache
