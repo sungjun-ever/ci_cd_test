@@ -74,8 +74,8 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.AWS_EC2_HOST }}
-          username: ${{ secrets.AWS.EC2.USERNAME }}
-          key: ${{ secrets.AWS.EC2.SSH_PRIVATE_KEY }}
+          username: ${{ secrets.AWS_EC2_USERNAME }}
+          key: ${{ secrets.AWS_EC2_SSH_PRIVATE_KEY }}
           port: 22
 
           script: |
@@ -86,8 +86,6 @@ jobs:
             git pull origin main
             
             composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-            
-            cp .env.example .env
             
             php artisan key:generate --force
             
