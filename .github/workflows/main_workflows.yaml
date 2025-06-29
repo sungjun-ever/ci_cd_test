@@ -40,3 +40,66 @@ jobs:
           DB_CONNECTION: sqlite
           DB_DATABASE: database.sqlite
         run: php artisan test
+
+  deploy-to-ec2:
+    needs: laravel-tests
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    environment:
+      name: production
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+
+      - name: Install Composer Dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@V3
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.AWS_EC2_HOST }}
+          username: ${{ secrets.AWS.EC2.USERNAME }}
+          key: ${{ secrets.AWS.EC2.SSH_PRIVATE_KEY }}
+          port: 22
+
+          script: |
+            echo "--- Starting Deployment on EC2 ---"
+            
+            cd /var/www/bs/ws
+            
+            git pull origin main
+            
+            composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+            
+            cp .env.example .env
+            
+            php artisan key:generate --force
+            
+            php artisan optimize:clear
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            
+            sudo systemctl reload php8.3-fpm
+            sudo systemctl reload nginx
+            
+            sudo chown -R www-data:www-data /var/www/bs/ws/storage /var/www/bs/ws/bootstrap/cache
+            sudo chmod -R 775 /var/www/bs/ws/storage /var/www/bs/ws/bootstrap/cache
+            
+            echo "--- Deployment to EC2 Finished ---"
