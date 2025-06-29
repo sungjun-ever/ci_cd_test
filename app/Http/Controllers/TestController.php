@@ -10,4 +10,9 @@ class TestController extends Controller
     {
         return true;
     }
+
+    public function isTest2()
+    {
+        return false;
+    }
 }
